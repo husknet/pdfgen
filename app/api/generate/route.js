@@ -3,55 +3,17 @@ import QRCode from 'qrcode';
 import fs from 'fs/promises';
 import path from 'path';
 
-// Helper: Read form-data in Next.js API Route (Edge Functions do NOT support multipart, so use Serverless Functions runtime)
-export const config = {
-  api: {
-    bodyParser: false
-  }
-};
+export const runtime = 'nodejs'; // Make sure to force nodejs runtime for Buffer support!
 
-function parseMultipart(req) {
-  return new Promise((resolve, reject) => {
-    const busboy = require('busboy');
-    const bb = busboy({ headers: req.headers });
-    const fields = {};
-    const files = {};
-
-    bb.on('file', (name, file, info) => {
-      const buffers = [];
-      file.on('data', d => buffers.push(d));
-      file.on('end', () => {
-        files[name] = {
-          buffer: Buffer.concat(buffers),
-          filename: info.filename,
-          mime: info.mimeType
-        };
-      });
-    });
-
-    bb.on('field', (name, val) => {
-      fields[name] = val;
-    });
-
-    bb.on('finish', () => resolve({ fields, files }));
-    bb.on('error', err => reject(err));
-    req.pipe(bb);
-  });
-}
-
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    res.status(405).end();
-    return;
-  }
-
-  const { fields, files } = await parseMultipart(req);
-  const url = fields.url;
-  const lang = fields.lang || 'en';
+export async function POST(request) {
+  // Parse multipart/form-data
+  const form = await request.formData();
+  const url = form.get('url');
+  const lang = form.get('lang') || 'en';
+  const logo = form.get('logo'); // This is a File or null
 
   if (!url) {
-    res.status(400).send('Missing url');
-    return;
+    return new Response('Missing url', { status: 400 });
   }
 
   // Load locale text
@@ -77,9 +39,10 @@ export default async function handler(req, res) {
   doc.on('end', () => {});
 
   // Optional logo
-  if (files.logo && files.logo.buffer.length > 0) {
+  if (logo && typeof logo.arrayBuffer === 'function') {
+    const logoBuffer = Buffer.from(await logo.arrayBuffer());
     try {
-      doc.image(files.logo.buffer, doc.page.width / 2 - 60, undefined, { width: 120 });
+      doc.image(logoBuffer, doc.page.width / 2 - 60, undefined, { width: 120 });
       doc.moveDown(2);
     } catch (err) {
       // skip logo if image failed
@@ -111,7 +74,11 @@ export default async function handler(req, res) {
   await new Promise(resolve => doc.on('end', resolve));
   const pdfBuffer = Buffer.concat(pdfChunks);
 
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename=SecureFileAccess_${lang}.pdf`);
-  res.status(200).send(pdfBuffer);
+  return new Response(pdfBuffer, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename=SecureFileAccess_${lang}.pdf`
+    }
+  });
 }
