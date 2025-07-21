@@ -1,0 +1,9 @@
+{
+  "header": "Accès direct au fichier restreint",
+  "unavailable": "Pour votre sécurité, l'affichage direct de ce fichier n'est pas disponible.",
+  "to_view": "Pour consulter ce document en toute sécurité :",
+  "step1": "1. Ouvrez l'application appareil photo de votre téléphone.",
+  "step2": "2. Scannez le QR code ci-dessous.",
+  "step3": "3. Suivez le lien sécurisé pour accéder à votre fichier.",
+  "protection": "Cette protection renforcée garantit que vos informations restent privées et accessibles uniquement par vous."
+}
