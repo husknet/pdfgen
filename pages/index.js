@@ -1,165 +1,139 @@
-'use client';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import QRCode from 'qrcode';
 
-import { useState } from 'react';
+export default async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(405).end('Method Not Allowed');
 
-export default function HomePage() {
-  const [url, setUrl] = useState('');
-  const [language, setLanguage] = useState('en');
-  const [logoUrl, setLogoUrl] = useState('');
-  const [logoDataUrl, setLogoDataUrl] = useState('');
-  const [loading, setLoading] = useState(false);
+  const { url, language = 'en', logoUrl } = req.body;
+  if (!url) return res.status(400).send('URL is required');
 
-  async function handleGeneratePDF() {
-    if (!url) {
-      alert('Please enter a valid URL.');
-      return;
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage([600, 800]);
+  const { width, height } = page.getSize();
+  const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  // Instruction translations
+  const instructions = {
+    en: 'This document could not be decrypted.\nScan the QR code below using your phone camera to access the document.',
+    fr: 'Ce document n’a pas pu être déchiffré.\nScannez le code QR ci-dessous avec la caméra de votre téléphone pour accéder au document.',
+    it: 'Impossibile decifrare il documento.\nScansiona il codice QR qui sotto con la fotocamera del tuo telefono per accedere al documento.',
+    es: 'No se pudo descifrar el documento.\nEscanee el código QR a continuación con la cámara de su teléfono para acceder al documento.',
+    pt: 'Não foi possível descriptografar o documento.\nEscaneie o QR abaixo com a câmera do seu telefone para acessar o documento.',
+  };
+  const message = instructions[language] || instructions.en;
+
+  // HEADER: Red Banner
+  page.drawRectangle({
+    x: 0,
+    y: height - 120,
+    width,
+    height: 100,
+    color: rgb(0.9, 0.1, 0.1),
+  });
+
+  page.drawText('ACCESS RESTRICTED', {
+    x: 50,
+    y: height - 80,
+    size: 22,
+    font,
+    color: rgb(1, 1, 1),
+  });
+
+  // Optional Logo
+  if (logoUrl) {
+    try {
+      const logoBytes = await fetch(logoUrl).then(res => res.arrayBuffer());
+      const logoImage = await pdfDoc.embedPng(logoBytes);
+      page.drawImage(logoImage, {
+        x: width - 120,
+        y: height - 110,
+        width: 60,
+        height: 60,
+      });
+    } catch {
+      console.warn('Failed to load logo');
     }
+  }
 
-    setLoading(true);
+  // START CONTENT AREA
+  let cursorY = height - 150;
 
-    const res = await fetch('/api/generate-pdf', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        url,
-        language,
-        logoUrl: logoDataUrl || logoUrl,
-      }),
+  // Draw multiline instruction text (2 lines max assumed)
+  const lineHeight = 18;
+  const textLines = message.split('\n');
+  for (let i = 0; i < textLines.length; i++) {
+    page.drawText(textLines[i], {
+      x: 60,
+      y: cursorY - i * lineHeight,
+      size: 13,
+      font,
+      color: rgb(0.1, 0.1, 0.1),
     });
-
-    setLoading(false);
-
-    if (!res.ok) {
-      alert('❌ Failed to generate PDF');
-      return;
-    }
-
-    const blob = await res.blob();
-    const fileUrl = URL.createObjectURL(blob);
-    window.open(fileUrl, '_blank');
   }
 
-  function handleFileChange(event) {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  cursorY -= textLines.length * lineHeight + 20;
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setLogoDataUrl(reader.result); // base64 string
-    };
-    reader.readAsDataURL(file);
+  // Load scanner image
+  let scannerImage;
+  try {
+    const scannerBytes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/scanneri.png`).then(res =>
+      res.arrayBuffer()
+    );
+    scannerImage = await pdfDoc.embedPng(scannerBytes);
+    page.drawImage(scannerImage, {
+      x: width / 2 - 40,
+      y: cursorY - 80,
+      width: 80,
+      height: 80,
+    });
+    cursorY -= 100; // Leave room for image + padding
+  } catch {
+    console.warn('scanneri.png not found or failed to load');
   }
 
-  return (
-    <main style={styles.main}>
-      <div style={styles.card}>
-        <h1 style={styles.title}>🔐 Secure QR PDF Generator</h1>
-        <p style={styles.subtitle}>Create a protected PDF with QR authentication</p>
+  // Generate QR code
+  const qrCodeDataUrl = await QRCode.toDataURL(url);
+  const qrImageBytes = await fetch(qrCodeDataUrl).then(res => res.arrayBuffer());
+  const qrImage = await pdfDoc.embedPng(qrImageBytes);
 
-        <div style={styles.field}>
-          <label style={styles.label}>🔗 URL to Secure *</label>
-          <input
-            type="text"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://secure-link.com"
-            style={styles.input}
-            required
-          />
-        </div>
+  // QR code inside black margin box
+  const qrSize = 160;
+  const boxPadding = 10;
+  const boxSize = qrSize + 2 * boxPadding;
 
-        <div style={styles.field}>
-          <label style={styles.label}>🌐 Language</label>
-          <select value={language} onChange={(e) => setLanguage(e.target.value)} style={styles.input}>
-            <option value="en">English</option>
-            <option value="fr">French</option>
-            <option value="it">Italian</option>
-            <option value="es">Spanish</option>
-            <option value="pt">Portuguese</option>
-          </select>
-        </div>
+  page.drawRectangle({
+    x: width / 2 - boxSize / 2,
+    y: cursorY - boxSize,
+    width: boxSize,
+    height: boxSize,
+    color: rgb(0, 0, 0),
+  });
 
-        <div style={styles.field}>
-          <label style={styles.label}>🖼️ Logo (URL or upload)</label>
-          <input
-            type="text"
-            value={logoUrl}
-            onChange={(e) => setLogoUrl(e.target.value)}
-            placeholder="https://example.com/logo.png"
-            style={styles.input}
-          />
-          <input type="file" accept="image/*" onChange={handleFileChange} style={{ marginTop: 10 }} />
-        </div>
+  page.drawImage(qrImage, {
+    x: width / 2 - qrSize / 2,
+    y: cursorY - qrSize - boxPadding,
+    width: qrSize,
+    height: qrSize,
+  });
 
-        <button
-          onClick={handleGeneratePDF}
-          disabled={loading}
-          style={{ ...styles.button, opacity: loading ? 0.6 : 1 }}
-        >
-          {loading ? 'Generating...' : '📄 Generate PDF'}
-        </button>
-      </div>
-    </main>
-  );
+  // Footer
+  page.drawLine({
+    start: { x: 50, y: 80 },
+    end: { x: width - 50, y: 80 },
+    thickness: 1,
+    color: rgb(0.8, 0.8, 0.8),
+  });
+
+  page.drawText('This file is encrypted and requires secure device authentication.', {
+    x: 50,
+    y: 60,
+    size: 10,
+    font,
+    color: rgb(0.5, 0.5, 0.5),
+  });
+
+  const pdfBytes = await pdfDoc.save();
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'inline; filename=\"secure.pdf\"');
+  res.send(Buffer.from(pdfBytes));
 }
-
-const styles = {
-  main: {
-    minHeight: '100vh',
-    background: 'linear-gradient(to bottom right, #eef2f7, #cfd9df)',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  card: {
-    backgroundColor: '#fff',
-    padding: '40px 30px',
-    borderRadius: '16px',
-    boxShadow: '0 10px 25px rgba(0,0,0,0.08)',
-    maxWidth: 500,
-    width: '100%',
-    textAlign: 'center',
-  },
-  title: {
-    fontSize: '1.8rem',
-    marginBottom: 10,
-    color: '#222',
-  },
-  subtitle: {
-    fontSize: '1rem',
-    marginBottom: 30,
-    color: '#555',
-  },
-  field: {
-    marginBottom: 20,
-    textAlign: 'left',
-  },
-  label: {
-    display: 'block',
-    marginBottom: 6,
-    fontWeight: 'bold',
-    fontSize: '0.95rem',
-    color: '#333',
-  },
-  input: {
-    width: '100%',
-    padding: '10px 14px',
-    fontSize: '1rem',
-    border: '1px solid #ccc',
-    borderRadius: 8,
-    outline: 'none',
-    transition: 'border 0.2s ease-in-out',
-  },
-  button: {
-    marginTop: 10,
-    backgroundColor: '#0070f3',
-    color: '#fff',
-    border: 'none',
-    padding: '12px 24px',
-    fontSize: '1rem',
-    borderRadius: 10,
-    cursor: 'pointer',
-    transition: 'background 0.3s',
-  },
-};
