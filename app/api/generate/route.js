@@ -1,8 +1,25 @@
-import PDFDocument from 'pdfkit';
+import { NextResponse } from 'next/server';
+import { pdf, Document, Page, Text, View, Image, Font, StyleSheet } from '@react-pdf/renderer';
 import QRCode from 'qrcode';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
+
+// Register custom font
+const fontPath = path.join(process.cwd(), 'public', 'fonts', 'DejaVuSans.ttf');
+if (fsSync.existsSync(fontPath)) {
+  Font.register({ family: 'DejaVuSans', src: fontPath });
+}
+
+const styles = StyleSheet.create({
+  page: { padding: 40, fontFamily: 'DejaVuSans' },
+  header: { fontSize: 22, color: 'red', marginBottom: 8 },
+  subheader: { fontSize: 14, marginBottom: 20 },
+  steps: { fontSize: 12, marginBottom: 10 },
+  qr: { width: 150, height: 150, margin: '20px auto' },
+  logo: { width: 120, margin: '0 auto 20px' },
+  footer: { color: 'gray', fontSize: 12, marginTop: 30, textAlign: 'center' }
+});
 
 export const runtime = 'nodejs';
 
@@ -14,7 +31,7 @@ export async function POST(request) {
     const logo = form.get('logo');
 
     if (!url) {
-      return new Response('Missing url', { status: 400 });
+      return NextResponse.json({ error: 'Missing url' }, { status: 400 });
     }
 
     // Load translation JSON
@@ -29,60 +46,36 @@ export async function POST(request) {
       t = JSON.parse(raw);
     }
 
-    // Generate QR code image as buffer
-    const qrDataUrl = await QRCode.toDataURL(url, { width: 256 });
-    const qrImageBuffer = Buffer.from(qrDataUrl.split(',')[1], 'base64');
+    // Generate QR code as DataURL
+    const qrDataUrl = await QRCode.toDataURL(url);
 
-    // Set the font path and ensure it exists
-    const fontPath = path.join(process.cwd(), 'public', 'fonts', 'DejaVuSans.ttf');
-    if (!fsSync.existsSync(fontPath)) {
-      throw new Error('DejaVuSans.ttf is missing at ' + fontPath);
-    }
-
-    // Create PDF in memory
-    const doc = new PDFDocument({ margin: 50 });
-    let pdfChunks = [];
-    doc.on('data', chunk => pdfChunks.push(chunk));
-    doc.on('end', () => {});
-
-    doc.font(fontPath); // !!! SET THE FONT FIRST -- this avoids .afm error !!!
-
-    // (Optional) Add logo at the top
+    // Optional logo DataURL
+    let logoDataUrl = null;
     if (logo && typeof logo.arrayBuffer === 'function') {
       const logoBuffer = Buffer.from(await logo.arrayBuffer());
-      try {
-        doc.image(logoBuffer, doc.page.width / 2 - 60, undefined, { width: 120 });
-        doc.moveDown(2);
-      } catch (err) {
-        // skip logo if image failed
-      }
+      logoDataUrl = 'data:image/png;base64,' + logoBuffer.toString('base64');
     }
 
-    // PDF layout (all calls happen AFTER setting font)
-    doc.fontSize(22).fillColor('red').text('🚫', { continued: true }).fillColor('black').text(` ${t.header}`);
-    doc.moveDown(1.2);
+    // Compose the PDF document using @react-pdf/renderer
+    const MyDoc = (
+      <Document>
+        <Page style={styles.page}>
+          {logoDataUrl && <Image style={styles.logo} src={logoDataUrl} />}
+          <Text style={styles.header}>🚫 {t.header}</Text>
+          <Text style={styles.subheader}>{t.unavailable}</Text>
+          <Text style={styles.steps}>{t.to_view}</Text>
+          <Text style={styles.steps}>{t.step1}</Text>
+          <Text style={styles.steps}>{t.step2}</Text>
+          <Text style={styles.steps}>{t.step3}</Text>
+          <Image style={styles.qr} src={qrDataUrl} />
+          <Text style={styles.footer}>{t.protection}</Text>
+        </Page>
+      </Document>
+    );
 
-    doc.fontSize(14).fillColor('black').text(t.unavailable, { align: 'center' });
-    doc.moveDown(2);
+    const pdfBuffer = await pdf(MyDoc).toBuffer();
 
-    doc.fontSize(15).fillColor('black').text('📱 ' + t.to_view, { underline: true });
-    doc.moveDown(0.7);
-    doc.fontSize(12).fillColor('black').text(t.step1);
-    doc.text(t.step2);
-    doc.text(t.step3);
-    doc.moveDown(2);
-
-    doc.image(qrImageBuffer, { width: 180, align: 'center' });
-    doc.moveDown(2);
-
-    doc.fontSize(12).fillColor('gray').text(t.protection, { align: 'center' });
-
-    doc.end();
-
-    await new Promise(resolve => doc.on('end', resolve));
-    const pdfBuffer = Buffer.concat(pdfChunks);
-
-    return new Response(pdfBuffer, {
+    return new NextResponse(pdfBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
@@ -91,7 +84,7 @@ export async function POST(request) {
     });
   } catch (e) {
     console.error('API error:', e);
-    return new Response(
+    return new NextResponse(
       typeof e === 'string' ? e : e.message || 'Unknown error',
       { status: 500 }
     );
