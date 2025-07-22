@@ -1,14 +1,10 @@
 import { NextResponse } from 'next/server';
+import pdfMake from 'pdfmake';
+import QRCode from 'qrcode';
 import fs from 'fs/promises';
 import path from 'path';
-import QRCode from 'qrcode';
-import pdfMake from 'pdfmake/build/pdfmake.js';
-import pdfFonts from 'pdfmake/build/vfs_fonts.js';
 
-// Use pdfmake's built-in vfs first (but we override to support custom font)
-pdfMake.vfs = pdfFonts.pdfMake.vfs;
-
-// Utility: convert Node Buffer to base64 string
+// Utility: buffer to base64 string
 function bufferToBase64(buf) {
   return buf.toString('base64');
 }
@@ -38,11 +34,9 @@ export async function POST(request) {
       t = JSON.parse(raw);
     }
 
-    // Load font as buffer, add to vfs
+    // Load font as buffer, add to vfs for pdfmake
     const fontPath = path.join(process.cwd(), 'public', 'fonts', 'DejaVuSans.ttf');
     const fontBuffer = await fs.readFile(fontPath);
-    const fontB64 = bufferToBase64(fontBuffer);
-    pdfMake.vfs['DejaVuSans.ttf'] = fontB64;
 
     // Prepare QR code image as Data URL (base64 PNG)
     const qrDataUrl = await QRCode.toDataURL(url);
@@ -74,18 +68,20 @@ export async function POST(request) {
       }
     };
 
-    // Register font
-    pdfMake.fonts = {
+    // Register the font: pdfmake requires the actual font buffer for ESM/server
+    const printer = new pdfMake({
       DejaVuSans: {
-        normal: 'DejaVuSans.ttf'
+        normal: fontBuffer
       }
-    };
-
-    // Generate the PDF as a Buffer
-    const pdfDocGenerator = pdfMake.createPdf(docDefinition);
-    const pdfBuffer = await new Promise((resolve, reject) => {
-      pdfDocGenerator.getBuffer((buffer) => resolve(Buffer.from(buffer)));
     });
+
+    // Create the PDF
+    const pdfDoc = printer.createPdfKitDocument(docDefinition);
+    const chunks = [];
+    pdfDoc.on('data', chunk => chunks.push(chunk));
+    await new Promise(resolve => pdfDoc.on('end', resolve));
+    pdfDoc.end();
+    const pdfBuffer = Buffer.concat(chunks);
 
     return new NextResponse(pdfBuffer, {
       status: 200,
