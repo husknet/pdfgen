@@ -29,7 +29,7 @@ export default async function handler(req, res) {
       heading: 'ACCESSO NEGATO',
       message:
         'Impossibile decifrare il documento.\nScansiona il codice QR qui sotto con la fotocamera del tuo telefono per accedere al documento.',
-      footer: 'Questo file è crittografato e richiede l\'autenticazione sicura.',
+      footer: 'Questo file è crittografato e richiede autenticazione sicura.',
     },
     es: {
       heading: 'ACCESO DENEGADO',
@@ -47,7 +47,7 @@ export default async function handler(req, res) {
 
   const langData = localizedText[language] || localizedText.en;
 
-  // Red header
+  // Draw red header
   page.drawRectangle({
     x: 0,
     y: height - 120,
@@ -56,7 +56,7 @@ export default async function handler(req, res) {
     color: rgb(0.9, 0.1, 0.1),
   });
 
-  // Dynamic heading
+  // Draw heading
   page.drawText(langData.heading, {
     x: 120,
     y: height - 80,
@@ -81,24 +81,42 @@ export default async function handler(req, res) {
     }
   }
 
-  // Instructions
+  // Instruction block
   let cursorY = height - 150;
   const lineHeight = 18;
-  const lines = langData.message.split('\n');
 
-  for (let i = 0; i < lines.length; i++) {
-    page.drawText(lines[i], {
-      x: 60,
+  function wrapText(text, maxChars) {
+    const words = text.split(' ');
+    const lines = [];
+    let line = '';
+
+    for (const word of words) {
+      if ((line + word).length <= maxChars) {
+        line += word + ' ';
+      } else {
+        lines.push(line.trim());
+        line = word + ' ';
+      }
+    }
+    if (line) lines.push(line.trim());
+    return lines;
+  }
+
+  const wrappedLines = wrapText(langData.message.replace(/\n/g, ' '), 55);
+
+  for (let i = 0; i < wrappedLines.length; i++) {
+    page.drawText(wrappedLines[i], {
+      x: 50,
       y: cursorY - i * lineHeight,
-      size: 13,
+      size: 12,
       font,
       color: rgb(0.1, 0.1, 0.1),
     });
   }
 
-  cursorY -= lines.length * lineHeight + 30;
+  cursorY -= wrappedLines.length * lineHeight + 40;
 
-  // Generate QR
+  // Generate QR Code
   const qrCodeDataUrl = await QRCode.toDataURL(url);
   const qrImageBytes = await fetch(qrCodeDataUrl).then((res) => res.arrayBuffer());
   const qrImage = await pdfDoc.embedPng(qrImageBytes);
@@ -109,7 +127,7 @@ export default async function handler(req, res) {
   const qrBoxX = width / 2 - boxSize / 2;
   const qrBoxY = cursorY - boxSize;
 
-  // Black box
+  // Draw black QR box
   page.drawRectangle({
     x: qrBoxX,
     y: qrBoxY,
@@ -118,7 +136,7 @@ export default async function handler(req, res) {
     color: rgb(0, 0, 0),
   });
 
-  // QR image
+  // Draw QR code inside
   page.drawImage(qrImage, {
     x: width / 2 - qrSize / 2,
     y: qrBoxY + boxPadding,
@@ -126,15 +144,15 @@ export default async function handler(req, res) {
     height: qrSize,
   });
 
-  // scanneri.png below QR
+  // Draw scanneri.png below QR
   try {
     const scannerBytes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/scanneri.png`).then((res) =>
       res.arrayBuffer()
     );
     const scannerImage = await pdfDoc.embedPng(scannerBytes);
 
-    const scannerWidth = 75;
-    const scannerHeight = 75;
+    const scannerWidth = 113;
+    const scannerHeight = 113;
     const scannerY = qrBoxY - scannerHeight - 20;
 
     page.drawImage(scannerImage, {
