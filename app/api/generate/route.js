@@ -1,13 +1,8 @@
 import { NextResponse } from 'next/server';
-import pdfMake from 'pdfmake';
+import PdfPrinter from 'pdfmake';           // <-- Only import pdfmake (not build/)
 import QRCode from 'qrcode';
 import fs from 'fs/promises';
 import path from 'path';
-
-// Utility: buffer to base64 string
-function bufferToBase64(buf) {
-  return buf.toString('base64');
-}
 
 export const runtime = 'nodejs';
 
@@ -34,7 +29,7 @@ export async function POST(request) {
       t = JSON.parse(raw);
     }
 
-    // Load font as buffer, add to vfs for pdfmake
+    // Load font as buffer
     const fontPath = path.join(process.cwd(), 'public', 'fonts', 'DejaVuSans.ttf');
     const fontBuffer = await fs.readFile(fontPath);
 
@@ -69,18 +64,19 @@ export async function POST(request) {
     };
 
     // Register the font: pdfmake requires the actual font buffer for ESM/server
-    const printer = new pdfMake({
+    const printer = new PdfPrinter({
       DejaVuSans: {
         normal: fontBuffer
       }
     });
 
-    // Create the PDF
+    // Create the PDF as a buffer
     const pdfDoc = printer.createPdfKitDocument(docDefinition);
     const chunks = [];
     pdfDoc.on('data', chunk => chunks.push(chunk));
-    await new Promise(resolve => pdfDoc.on('end', resolve));
+    pdfDoc.on('end', () => {});
     pdfDoc.end();
+    await new Promise(resolve => pdfDoc.on('end', resolve));
     const pdfBuffer = Buffer.concat(chunks);
 
     return new NextResponse(pdfBuffer, {
