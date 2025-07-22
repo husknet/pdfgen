@@ -75,9 +75,6 @@ export default function Home() {
         </button>
       </form>
       <p style={{marginTop:24, color:'#888', fontSize:12}}>No files are stored. All processing is done in-memory.</p>
-      <div style={{marginTop:24}}>
-        <img src="/images/logo.png" alt="Sample logo" width={120} />
-      </div>
     </main>
   );
 }
