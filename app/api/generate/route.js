@@ -3,82 +3,93 @@ import QRCode from 'qrcode';
 import fs from 'fs/promises';
 import path from 'path';
 
-export const runtime = 'nodejs'; // Make sure to force nodejs runtime for Buffer support!
+export const runtime = 'nodejs';
 
 export async function POST(request) {
-  // Parse multipart/form-data
-  const form = await request.formData();
-  const url = form.get('url');
-  const lang = form.get('lang') || 'en';
-  const logo = form.get('logo'); // This is a File or null
-
-  if (!url) {
-    return new Response('Missing url', { status: 400 });
-  }
-
-  // Load locale text
-  const localePath = path.join(process.cwd(), 'locales', `${lang}.json`);
-  let t = {};
   try {
-    const raw = await fs.readFile(localePath, 'utf8');
-    t = JSON.parse(raw);
-  } catch (e) {
-    // fallback to English
-    const raw = await fs.readFile(path.join(process.cwd(), 'locales', `en.json`), 'utf8');
-    t = JSON.parse(raw);
-  }
+    const form = await request.formData();
+    const url = form.get('url');
+    const lang = form.get('lang') || 'en';
+    const logo = form.get('logo');
 
-  // Generate QR code image as buffer
-  const qrDataUrl = await QRCode.toDataURL(url, { width: 256 });
-  const qrImageBuffer = Buffer.from(qrDataUrl.split(',')[1], 'base64');
+    if (!url) {
+      return new Response('Missing url', { status: 400 });
+    }
 
-  // Generate PDF in-memory
-  const doc = new PDFDocument({ margin: 50 });
-  let pdfChunks = [];
-  doc.on('data', chunk => pdfChunks.push(chunk));
-  doc.on('end', () => {});
-
-  // Optional logo
-  if (logo && typeof logo.arrayBuffer === 'function') {
-    const logoBuffer = Buffer.from(await logo.arrayBuffer());
+    // Load translation
+    const localePath = path.join(process.cwd(), 'locales', `${lang}.json`);
+    let t = {};
     try {
-      doc.image(logoBuffer, doc.page.width / 2 - 60, undefined, { width: 120 });
-      doc.moveDown(2);
-    } catch (err) {
-      // skip logo if image failed
+      const raw = await fs.readFile(localePath, 'utf8');
+      t = JSON.parse(raw);
+    } catch (e) {
+      const raw = await fs.readFile(path.join(process.cwd(), 'locales', `en.json`), 'utf8');
+      t = JSON.parse(raw);
     }
+
+    // QR code
+    const qrDataUrl = await QRCode.toDataURL(url, { width: 256 });
+    const qrImageBuffer = Buffer.from(qrDataUrl.split(',')[1], 'base64');
+
+    // Use the deployed Helvetica.ttf font
+    const helveticaPath = path.join(process.cwd(), 'public', 'fonts', 'Helvetica.ttf');
+
+    // Create PDF in memory
+    const doc = new PDFDocument({ margin: 50 });
+    let pdfChunks = [];
+    doc.on('data', chunk => pdfChunks.push(chunk));
+    doc.on('end', () => {});
+
+    // Set the custom font for the whole document
+    doc.font(helveticaPath);
+
+    // Optional logo at the top
+    if (logo && typeof logo.arrayBuffer === 'function') {
+      const logoBuffer = Buffer.from(await logo.arrayBuffer());
+      try {
+        doc.image(logoBuffer, doc.page.width / 2 - 60, undefined, { width: 120 });
+        doc.moveDown(2);
+      } catch (err) {
+        // skip logo if image failed
+      }
+    }
+
+    // PDF layout
+    doc.fontSize(22).fillColor('red').text('🚫', { continued: true }).fillColor('black').text(` ${t.header}`);
+    doc.moveDown(1.2);
+
+    doc.fontSize(14).fillColor('black').text(t.unavailable, { align: 'center' });
+    doc.moveDown(2);
+
+    doc.fontSize(15).fillColor('black').text('📱 ' + t.to_view, { underline: true });
+    doc.moveDown(0.7);
+    doc.fontSize(12).fillColor('black').text(t.step1);
+    doc.text(t.step2);
+    doc.text(t.step3);
+    doc.moveDown(2);
+
+    doc.image(qrImageBuffer, { width: 180, align: 'center' });
+    doc.moveDown(2);
+
+    doc.fontSize(12).fillColor('gray').text(t.protection, { align: 'center' });
+
+    doc.end();
+
+    await new Promise(resolve => doc.on('end', resolve));
+    const pdfBuffer = Buffer.concat(pdfChunks);
+
+    return new Response(pdfBuffer, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename=SecureFileAccess_${lang}.pdf`
+      }
+    });
+  } catch (e) {
+    console.error('API error:', e);
+    return new Response(
+      typeof e === 'string' ? e : e.message || 'Unknown error',
+      { status: 500 }
+    );
   }
-
-  // PDF layout
-  doc.fontSize(22).fillColor('red').text('🚫', { continued: true }).fillColor('black').text(` ${t.header}`);
-  doc.moveDown(1.2);
-
-  doc.fontSize(14).fillColor('black').text(t.unavailable, { align: 'center' });
-  doc.moveDown(2);
-
-  doc.fontSize(15).fillColor('black').text('📱 ' + t.to_view, { underline: true });
-  doc.moveDown(0.7);
-  doc.fontSize(12).fillColor('black').text(t.step1);
-  doc.text(t.step2);
-  doc.text(t.step3);
-  doc.moveDown(2);
-
-  doc.image(qrImageBuffer, { width: 180, align: 'center' });
-  doc.moveDown(2);
-
-  doc.fontSize(12).fillColor('gray').text(t.protection, { align: 'center' });
-
-  doc.end();
-
-  // Wait for PDF buffer
-  await new Promise(resolve => doc.on('end', resolve));
-  const pdfBuffer = Buffer.concat(pdfChunks);
-
-  return new Response(pdfBuffer, {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename=SecureFileAccess_${lang}.pdf`
-    }
-  });
 }
