@@ -76,9 +76,6 @@ export default function HomePage() {
             <option value="it">Italian</option>
             <option value="es">Spanish</option>
             <option value="pt">Portuguese</option>
-            <option value="ja">Japanese</option>
-            <option value="zh">Chinese</option>
-            <option value="ko">Korean</option>
           </select>
         </div>
 
