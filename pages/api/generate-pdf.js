@@ -53,7 +53,7 @@ export default async function handler(req, res) {
     y: height - 120,
     width,
     height: 100,
-    color: rgb(0, 0, 255),
+    color: rgb(0.1, 0.3, 0.9),
   });
 
   // Draw heading
