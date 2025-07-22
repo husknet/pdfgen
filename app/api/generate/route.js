@@ -33,7 +33,7 @@ export async function POST(request) {
     const qrDataUrl = await QRCode.toDataURL(url, { width: 256 });
     const qrImageBuffer = Buffer.from(qrDataUrl.split(',')[1], 'base64');
 
-    // Use DejaVuSans.ttf for all text
+    // Set the font path and ensure it exists
     const fontPath = path.join(process.cwd(), 'public', 'fonts', 'DejaVuSans.ttf');
     if (!fsSync.existsSync(fontPath)) {
       throw new Error('DejaVuSans.ttf is missing at ' + fontPath);
@@ -45,9 +45,9 @@ export async function POST(request) {
     doc.on('data', chunk => pdfChunks.push(chunk));
     doc.on('end', () => {});
 
-    doc.font(fontPath); // NO BUILT-IN FONT NAMES
+    doc.font(fontPath); // !!! SET THE FONT FIRST -- this avoids .afm error !!!
 
-    // Optional logo at the top
+    // (Optional) Add logo at the top
     if (logo && typeof logo.arrayBuffer === 'function') {
       const logoBuffer = Buffer.from(await logo.arrayBuffer());
       try {
@@ -58,7 +58,7 @@ export async function POST(request) {
       }
     }
 
-    // PDF layout
+    // PDF layout (all calls happen AFTER setting font)
     doc.fontSize(22).fillColor('red').text('🚫', { continued: true }).fillColor('black').text(` ${t.header}`);
     doc.moveDown(1.2);
 
