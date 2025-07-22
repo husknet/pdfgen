@@ -12,7 +12,7 @@ export default async function handler(req, res) {
   const { width, height } = page.getSize();
   const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  // Instruction translations
+  // Instructions per language
   const instructions = {
     en: 'This document could not be decrypted.\nScan the QR code below using your phone camera to access the document.',
     fr: 'Ce document n’a pas pu être déchiffré.\nScannez le code QR ci-dessous avec la caméra de votre téléphone pour accéder au document.',
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   };
   const message = instructions[language] || instructions.en;
 
-  // HEADER: Red Banner
+  // Draw top red header
   page.drawRectangle({
     x: 0,
     y: height - 120,
@@ -39,10 +39,10 @@ export default async function handler(req, res) {
     color: rgb(1, 1, 1),
   });
 
-  // Optional Logo
+  // Optional logo in header
   if (logoUrl) {
     try {
-      const logoBytes = await fetch(logoUrl).then(res => res.arrayBuffer());
+      const logoBytes = await fetch(logoUrl).then((res) => res.arrayBuffer());
       const logoImage = await pdfDoc.embedPng(logoBytes);
       page.drawImage(logoImage, {
         x: width - 120,
@@ -55,14 +55,13 @@ export default async function handler(req, res) {
     }
   }
 
-  // START CONTENT AREA
+  // Instruction text block
   let cursorY = height - 150;
-
-  // Draw multiline instruction text (2 lines max assumed)
   const lineHeight = 18;
-  const textLines = message.split('\n');
-  for (let i = 0; i < textLines.length; i++) {
-    page.drawText(textLines[i], {
+  const lines = message.split('\n');
+
+  for (let i = 0; i < lines.length; i++) {
+    page.drawText(lines[i], {
       x: 60,
       y: cursorY - i * lineHeight,
       size: 13,
@@ -71,39 +70,45 @@ export default async function handler(req, res) {
     });
   }
 
-  cursorY -= textLines.length * lineHeight + 20;
+  cursorY -= lines.length * lineHeight + 20;
 
-  // Load scanner image
-  let scannerImage;
+  // 📷 Place scanneri.png just above QR, spaced from text
+  let scannerImageHeight = 0;
   try {
     const scannerBytes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/scanneri.png`).then(res =>
       res.arrayBuffer()
     );
-    scannerImage = await pdfDoc.embedPng(scannerBytes);
+    const scannerImage = await pdfDoc.embedPng(scannerBytes);
+    const imgWidth = 80;
+    scannerImageHeight = 80;
+
     page.drawImage(scannerImage, {
-      x: width / 2 - 40,
-      y: cursorY - 80,
-      width: 80,
-      height: 80,
+      x: width / 2 - imgWidth / 2,
+      y: cursorY - scannerImageHeight,
+      width: imgWidth,
+      height: scannerImageHeight,
     });
-    cursorY -= 100; // Leave room for image + padding
+
+    cursorY -= scannerImageHeight + 20; // space after image
   } catch {
     console.warn('scanneri.png not found or failed to load');
   }
 
-  // Generate QR code
+  // Generate QR Code
   const qrCodeDataUrl = await QRCode.toDataURL(url);
-  const qrImageBytes = await fetch(qrCodeDataUrl).then(res => res.arrayBuffer());
+  const qrImageBytes = await fetch(qrCodeDataUrl).then((res) => res.arrayBuffer());
   const qrImage = await pdfDoc.embedPng(qrImageBytes);
 
-  // QR code inside black margin box
+  // Draw black box and QR code
   const qrSize = 160;
   const boxPadding = 10;
-  const boxSize = qrSize + 2 * boxPadding;
+  const boxSize = qrSize + boxPadding * 2;
+  const qrBoxX = width / 2 - boxSize / 2;
+  const qrBoxY = cursorY - boxSize;
 
   page.drawRectangle({
-    x: width / 2 - boxSize / 2,
-    y: cursorY - boxSize,
+    x: qrBoxX,
+    y: qrBoxY,
     width: boxSize,
     height: boxSize,
     color: rgb(0, 0, 0),
@@ -111,12 +116,12 @@ export default async function handler(req, res) {
 
   page.drawImage(qrImage, {
     x: width / 2 - qrSize / 2,
-    y: cursorY - qrSize - boxPadding,
+    y: qrBoxY + boxPadding,
     width: qrSize,
     height: qrSize,
   });
 
-  // Footer
+  // Footer notice
   page.drawLine({
     start: { x: 50, y: 80 },
     end: { x: width - 50, y: 80 },
@@ -132,6 +137,7 @@ export default async function handler(req, res) {
     color: rgb(0.5, 0.5, 0.5),
   });
 
+  // Send PDF
   const pdfBytes = await pdfDoc.save();
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', 'inline; filename=\"secure.pdf\"');
