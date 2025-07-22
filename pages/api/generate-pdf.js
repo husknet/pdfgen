@@ -1,70 +1,71 @@
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import QRCode from 'qrcode';
 
-export default async function handler(req, res) {
-  const { url, language = 'en', logoUrl } = req.body;
+export async function POST(req) {
+  const body = await req.json();
+  const { url, language = 'en', logoUrl } = body;
 
   if (!url) {
-    return res.status(400).send('URL is required');
+    return new Response('URL is required', { status: 400 });
   }
 
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([600, 800]);
-
-  // Generate QR Code
-  const qrCodeDataUrl = await QRCode.toDataURL(url);
-  const qrImageBytes = await fetch(qrCodeDataUrl).then((res) => res.arrayBuffer());
-  const qrImage = await pdfDoc.embedPng(qrImageBytes);
-
-  // PDF dimensions
   const { width, height } = page.getSize();
-  const qrSize = 200;
 
-  // Instruction messages in multiple languages
+  // Instructions in multiple languages
   const instructions = {
-    en: 'ERROR: Secure Document. Scan QR to authenticate.',
-    fr: 'ERREUR : Document sécurisé. Scannez le QR pour vous authentifier.',
-    it: 'ERRORE: Documento protetto. Scansiona il QR per autenticarti.',
-    es: 'ERROR: Documento seguro. Escanee QR para autenticarse.',
-    pt: 'ERRO: Documento seguro. Escaneie o QR para autenticar.',
-    ja: 'エラー：安全なドキュメントです。認証するにはQRコードをスキャンしてください。',
-    zh: '错误：安全文档。请扫描二维码进行身份验证。',
-    ko: '오류: 보안 문서입니다. 인증하려면 QR 코드를 스캔하십시오.'
+    en: 'ERROR: Secure Document\nScan QR to authenticate.',
+    fr: 'ERREUR : Document sécurisé\nScannez le QR pour vous authentifier.',
+    it: 'ERRORE: Documento protetto\nScansiona il QR per autenticarti.',
+    es: 'ERROR: Documento seguro\nEscanee QR para autenticarse.',
+    pt: 'ERRO: Documento seguro\nEscaneie o QR para autenticar.',
+    ja: 'エラー：安全なドキュメントです。\nQRコードをスキャンして認証してください。',
+    zh: '错误：安全文档。\n请扫描二维码进行身份验证。',
+    ko: '오류: 보안 문서입니다.\nQR 코드를 스캔하여 인증하세요.',
   };
 
-  const chosenInstruction = instructions[language] || instructions.en;
-
-  // Embed fonts
+  const message = instructions[language] || instructions.en;
   const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  // Draw instruction text
-  page.drawText(chosenInstruction, {
-    x: 50,
-    y: height / 2 + qrSize / 2 + 20,
-    size: 16,
-    font,
-    color: rgb(0.9, 0.1, 0.1),
-    maxWidth: 500,
-    lineHeight: 18
+  // Draw blue warning header box
+  page.drawRectangle({
+    x: 0,
+    y: height - 120,
+    width,
+    height: 100,
+    color: rgb(0, 0, 255),
   });
 
-  // Optional logo embedding
+  page.drawText('⚠️ ACCESS DENIED', {
+    x: 50,
+    y: height - 80,
+    size: 24,
+    font,
+    color: rgb(1, 1, 1),
+  });
+
+  // Optional logo at top right
   if (logoUrl) {
     try {
       const logoBytes = await fetch(logoUrl).then((res) => res.arrayBuffer());
       const logoImage = await pdfDoc.embedPng(logoBytes);
       page.drawImage(logoImage, {
-        x: width / 2 - 50,
-        y: height - 120,
-        width: 100,
-        height: 100,
+        x: width - 120,
+        y: height - 110,
+        width: 60,
+        height: 60,
       });
-    } catch (err) {
-      console.warn("Logo URL failed to load, proceeding without logo.");
+    } catch (e) {
+      console.warn('Failed to load logo');
     }
   }
 
-  // Draw QR code image
+  // Center QR Code
+  const qrCodeDataUrl = await QRCode.toDataURL(url);
+  const qrImageBytes = await fetch(qrCodeDataUrl).then((res) => res.arrayBuffer());
+  const qrImage = await pdfDoc.embedPng(qrImageBytes);
+  const qrSize = 200;
   page.drawImage(qrImage, {
     x: width / 2 - qrSize / 2,
     y: height / 2 - qrSize / 2,
@@ -72,10 +73,38 @@ export default async function handler(req, res) {
     height: qrSize,
   });
 
-  // Create PDF buffer
+  // Instruction text under QR
+  page.drawText(message, {
+    x: 60,
+    y: height / 2 - qrSize / 2 - 80,
+    size: 14,
+    font,
+    color: rgb(0.1, 0.1, 0.1),
+    lineHeight: 18,
+  });
+
+  // Footer
+  page.drawLine({
+    start: { x: 50, y: 80 },
+    end: { x: width - 50, y: 80 },
+    thickness: 1,
+    color: rgb(0.8, 0.8, 0.8),
+  });
+
+  page.drawText('This document is restricted. Unauthorized access is prohibited.', {
+    x: 50,
+    y: 60,
+    size: 10,
+    font,
+    color: rgb(0.5, 0.5, 0.5),
+  });
+
   const pdfBytes = await pdfDoc.save();
 
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', 'inline; filename="secure.pdf"');
-  res.send(Buffer.from(pdfBytes));
+  return new Response(Buffer.from(pdfBytes), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'inline; filename="secure.pdf"',
+    },
+  });
 }
