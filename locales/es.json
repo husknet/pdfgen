@@ -1,9 +1,0 @@
-{
-  "header": "Acceso directo al archivo restringido",
-  "unavailable": "Por su seguridad, la visualización directa de este archivo no está disponible.",
-  "to_view": "Para ver este documento de forma segura:",
-  "step1": "1. Abra la aplicación de cámara en su dispositivo móvil.",
-  "step2": "2. Escanee el código QR que aparece abajo.",
-  "step3": "3. Siga el enlace seguro para acceder a su archivo.",
-  "protection": "Esta protección adicional asegura que su información permanezca privada y solo sea accesible para usted."
-}
