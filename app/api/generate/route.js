@@ -1,6 +1,7 @@
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import fs from 'fs/promises';
+import fsSync from 'fs'; // For existence check
 import path from 'path';
 
 export const runtime = 'nodejs';
@@ -16,23 +17,30 @@ export async function POST(request) {
       return new Response('Missing url', { status: 400 });
     }
 
-    // Load translation
-    const localePath = path.join(process.cwd(), 'locales', `${lang}.json`);
+    // Load translation JSON
     let t = {};
     try {
+      const localePath = path.join(process.cwd(), 'locales', `${lang}.json`);
       const raw = await fs.readFile(localePath, 'utf8');
       t = JSON.parse(raw);
     } catch (e) {
-      const raw = await fs.readFile(path.join(process.cwd(), 'locales', `en.json`), 'utf8');
+      // fallback to English
+      const fallbackPath = path.join(process.cwd(), 'locales', `en.json`);
+      const raw = await fs.readFile(fallbackPath, 'utf8');
       t = JSON.parse(raw);
     }
 
-    // QR code
+    // Generate QR code image as buffer
     const qrDataUrl = await QRCode.toDataURL(url, { width: 256 });
     const qrImageBuffer = Buffer.from(qrDataUrl.split(',')[1], 'base64');
 
-    // Use the deployed Helvetica.ttf font
+    // LOG AND CHECK FONT PATH
     const helveticaPath = path.join(process.cwd(), 'public', 'fonts', 'Helvetica.ttf');
+    console.log('Helvetica font path:', helveticaPath);
+    console.log('Font exists:', fsSync.existsSync(helveticaPath));
+    if (!fsSync.existsSync(helveticaPath)) {
+      throw new Error('Helvetica.ttf is missing at ' + helveticaPath);
+    }
 
     // Create PDF in memory
     const doc = new PDFDocument({ margin: 50 });
@@ -40,7 +48,7 @@ export async function POST(request) {
     doc.on('data', chunk => pdfChunks.push(chunk));
     doc.on('end', () => {});
 
-    // Set the custom font for the whole document
+    // SET THE CUSTOM FONT (only do this after existence is confirmed!)
     doc.font(helveticaPath);
 
     // Optional logo at the top
