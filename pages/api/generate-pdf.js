@@ -10,6 +10,7 @@ export default async function handler(req, res) {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([600, 800]);
   const { width, height } = page.getSize();
+  const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
   const instructions = {
     en: 'This document could not be decrypted.\nScan the QR code below using your phone camera to access the document.',
@@ -18,11 +19,9 @@ export default async function handler(req, res) {
     es: 'No se pudo descifrar el documento.\nEscanee el código QR a continuación con la cámara de su teléfono para acceder al documento.',
     pt: 'Não foi possível descriptografar o documento.\nEscaneie o QR abaixo com a câmera do seu telefone para acessar o documento.',
   };
-
   const message = instructions[language] || instructions.en;
-  const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  // Draw top red header
+  // Draw red header
   page.drawRectangle({
     x: 0,
     y: height - 120,
@@ -31,15 +30,32 @@ export default async function handler(req, res) {
     color: rgb(0.9, 0.1, 0.1),
   });
 
+  // Draw ACCESS RESTRICTED text
   page.drawText('ACCESS RESTRICTED', {
-    x: 50,
+    x: 120,
     y: height - 80,
     size: 22,
     font,
     color: rgb(1, 1, 1),
   });
 
-  // Optional logo
+  // Draw scanneri.png to left of header text
+  try {
+    const scannerBytes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/scanneri.png`).then(res =>
+      res.arrayBuffer()
+    );
+    const scannerImage = await pdfDoc.embedPng(scannerBytes);
+    page.drawImage(scannerImage, {
+      x: 50,
+      y: height - 110,
+      width: 50,
+      height: 50,
+    });
+  } catch {
+    console.warn('Failed to load scanneri.png');
+  }
+
+  // Optional logo on right
   if (logoUrl) {
     try {
       const logoBytes = await fetch(logoUrl).then((res) => res.arrayBuffer());
@@ -55,70 +71,47 @@ export default async function handler(req, res) {
     }
   }
 
-  // Load scanner image
-  let scannerImage;
-  try {
-    const scannerBytes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/scanneri.png`).then((res) =>
-      res.arrayBuffer()
-    );
-    scannerImage = await pdfDoc.embedPng(scannerBytes);
-  } catch {
-    console.warn('Failed to load scanneri.png');
-  }
+  // Instruction block
+  let cursorY = height - 150;
+  const lineHeight = 18;
+  const lines = message.split('\n');
 
-  // Position tracking
-  let currentY = height - 150;
-
-  // Instruction message
-  page.drawText(message, {
-    x: 60,
-    y: currentY,
-    size: 13,
-    font,
-    color: rgb(0.1, 0.1, 0.1),
-    lineHeight: 16,
-    maxWidth: width - 120,
-  });
-
-  currentY -= 60; // space after text
-
-  // Scanner image
-  if (scannerImage) {
-    page.drawImage(scannerImage, {
-      x: width / 2 - 40,
-      y: currentY,
-      width: 80,
-      height: 80,
+  for (let i = 0; i < lines.length; i++) {
+    page.drawText(lines[i], {
+      x: 60,
+      y: cursorY - i * lineHeight,
+      size: 13,
+      font,
+      color: rgb(0.1, 0.1, 0.1),
     });
   }
 
-  currentY -= 100; // space below scanner image
+  cursorY -= lines.length * lineHeight + 30;
 
-  // QR code generation
+  // Generate QR Code
   const qrCodeDataUrl = await QRCode.toDataURL(url);
   const qrImageBytes = await fetch(qrCodeDataUrl).then((res) => res.arrayBuffer());
   const qrImage = await pdfDoc.embedPng(qrImageBytes);
 
   const qrSize = 160;
-  const qrBoxPadding = 10;
-  const qrBoxSize = qrSize + qrBoxPadding * 2;
+  const boxPadding = 10;
+  const boxSize = qrSize + boxPadding * 2;
+  const qrBoxX = width / 2 - boxSize / 2;
+  const qrBoxY = cursorY - boxSize;
 
-  const qrBoxX = width / 2 - qrBoxSize / 2;
-  const qrBoxY = currentY - qrBoxSize;
-
-  // Draw QR background box
+  // Draw black QR box
   page.drawRectangle({
     x: qrBoxX,
     y: qrBoxY,
-    width: qrBoxSize,
-    height: qrBoxSize,
+    width: boxSize,
+    height: boxSize,
     color: rgb(0, 0, 0),
   });
 
-  // Draw QR code image
+  // Draw QR code inside
   page.drawImage(qrImage, {
     x: width / 2 - qrSize / 2,
-    y: qrBoxY + qrBoxPadding,
+    y: qrBoxY + boxPadding,
     width: qrSize,
     height: qrSize,
   });
@@ -140,7 +133,6 @@ export default async function handler(req, res) {
   });
 
   const pdfBytes = await pdfDoc.save();
-
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', 'inline; filename=\"secure.pdf\"');
   res.send(Buffer.from(pdfBytes));
