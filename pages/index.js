@@ -17,26 +17,31 @@ export default function HomePage() {
 
     setLoading(true);
 
-    const res = await fetch('/api/generate-pdf', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        url,
-        language,
-        logoUrl: logoDataUrl || logoUrl,
-      }),
-    });
+    try {
+      const res = await fetch('/api/generate-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url,
+          language,
+          logoUrl: logoDataUrl || logoUrl,
+        }),
+      });
 
-    setLoading(false);
+      setLoading(false);
 
-    if (!res.ok) {
-      alert('❌ Failed to generate PDF');
-      return;
+      if (!res.ok) {
+        alert('❌ Failed to generate PDF');
+        return;
+      }
+
+      const blob = await res.blob();
+      const fileUrl = URL.createObjectURL(blob);
+      window.open(fileUrl, '_blank');
+    } catch (err) {
+      setLoading(false);
+      alert('❌ An error occurred while generating the PDF.');
     }
-
-    const blob = await res.blob();
-    const fileUrl = URL.createObjectURL(blob);
-    window.open(fileUrl, '_blank');
   }
 
   function handleFileChange(event) {
@@ -72,15 +77,15 @@ export default function HomePage() {
           <label style={styles.label}>🌐 Language</label>
           <select value={language} onChange={(e) => setLanguage(e.target.value)} style={styles.input}>
             <option value="en">English</option>
-            <option value="fr">French</option>
-            <option value="it">Italian</option>
-            <option value="es">Spanish</option>
-            <option value="pt">Portuguese</option>
+            <option value="fr">Français</option>
+            <option value="it">Italiano</option>
+            <option value="es">Español</option>
+            <option value="pt">Português</option>
           </select>
         </div>
 
         <div style={styles.field}>
-          <label style={styles.label}>🖼️ Logo (URL or upload)</label>
+          <label style={styles.label}>🖼️ Logo (URL or Upload)</label>
           <input
             type="text"
             value={logoUrl}
