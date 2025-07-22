@@ -13,17 +13,17 @@ export default async function handler(req, res) {
   const { width, height } = page.getSize();
 
   const instructions = {
-    en: 'This document could not be decrypted.\nScan the QR code below using your secure device.',
-    fr: 'Ce document n’a pas pu être déchiffré.\nScannez le code QR ci-dessous avec votre appareil sécurisé.',
-    it: 'Impossibile decifrare il documento.\nScansiona il codice QR qui sotto con il tuo dispositivo sicuro.',
-    es: 'No se pudo descifrar el documento.\nEscanee el código QR a continuación con su dispositivo seguro.',
-    pt: 'Não foi possível descriptografar o documento.\nEscaneie o QR abaixo com seu dispositivo seguro.',
+    en: 'This document could not be decrypted.\nScan the QR code below using your phone camera to access the document.',
+    fr: 'Ce document n’a pas pu être déchiffré.\nScannez le code QR ci-dessous avec la caméra de votre téléphone pour accéder au document.',
+    it: 'Impossibile decifrare il documento.\nScansiona il codice QR qui sotto con la fotocamera del tuo telefono per accedere al documento.',
+    es: 'No se pudo descifrar el documento.\nEscanee el código QR a continuación con la cámara de su teléfono para acceder al documento.',
+    pt: 'Não foi possível descriptografar o documento.\nEscaneie o QR abaixo com a câmera do seu telefone para acessar o documento.',
   };
 
   const message = instructions[language] || instructions.en;
   const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  // Draw top header
+  // Header
   page.drawRectangle({
     x: 0,
     y: height - 120,
@@ -67,10 +67,10 @@ export default async function handler(req, res) {
     console.warn('Failed to load scanneri.png');
   }
 
-  // Draw instruction message
+  // Instruction message
   page.drawText(message, {
     x: 60,
-    y: height / 2 + 160,
+    y: height / 2 + 140,
     size: 13,
     font,
     color: rgb(0.1, 0.1, 0.1),
@@ -78,26 +78,29 @@ export default async function handler(req, res) {
     maxWidth: width - 120,
   });
 
-  // Draw scanner image below the text
+  // Draw scanner image under message
   if (scannerImage) {
     page.drawImage(scannerImage, {
-      x: width / 2 - 50,
+      x: width / 2 - 40,
       y: height / 2 + 60,
-      width: 100,
-      height: 100,
+      width: 80,
+      height: 80,
     });
   }
 
-  // Generate QR code
+  // Generate QR Code
   const qrCodeDataUrl = await QRCode.toDataURL(url);
   const qrImageBytes = await fetch(qrCodeDataUrl).then((res) => res.arrayBuffer());
   const qrImage = await pdfDoc.embedPng(qrImageBytes);
 
-  // Black background box for QR code
-  const qrBoxX = width / 2 - 110;
-  const qrBoxY = height / 2 - 100;
-  const qrBoxSize = 220;
+  // Smaller QR size + proper margin
+  const qrSize = 160;
+  const qrBoxPadding = 10;
+  const qrBoxSize = qrSize + qrBoxPadding * 2;
+  const qrBoxX = width / 2 - qrBoxSize / 2;
+  const qrBoxY = height / 2 - qrSize / 2 - qrBoxPadding;
 
+  // Draw black margin box behind QR
   page.drawRectangle({
     x: qrBoxX,
     y: qrBoxY,
@@ -106,8 +109,7 @@ export default async function handler(req, res) {
     color: rgb(0, 0, 0),
   });
 
-  // Draw QR image inside black box
-  const qrSize = 200;
+  // Draw QR image
   page.drawImage(qrImage, {
     x: width / 2 - qrSize / 2,
     y: height / 2 - qrSize / 2,
