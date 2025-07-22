@@ -38,7 +38,7 @@ export default async function handler(req, res) {
     color: rgb(1, 0.2, 0.2),
   });
 
-  page.drawText('⚠️ ACCESS DENIED', {
+  page.drawText('⚠ ACCESS DENIED', {
     x: 50,
     y: height - 80,
     size: 24,
