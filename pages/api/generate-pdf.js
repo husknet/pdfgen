@@ -12,16 +12,42 @@ export default async function handler(req, res) {
   const { width, height } = page.getSize();
   const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  const instructions = {
-    en: 'This document could not be decrypted.\nScan the QR code below using your phone camera to access the document.',
-    fr: 'Ce document n’a pas pu être déchiffré.\nScannez le code QR ci-dessous avec la caméra de votre téléphone pour accéder au document.',
-    it: 'Impossibile decifrare il documento.\nScansiona il codice QR qui sotto con la fotocamera del tuo telefono per accedere al documento.',
-    es: 'No se pudo descifrar el documento.\nEscanee el código QR a continuación con la cámara de su teléfono para acceder al documento.',
-    pt: 'Não foi possível descriptografar o documento.\nEscaneie o QR abaixo com a câmera do seu telefone para acessar o documento.',
+  const localizedText = {
+    en: {
+      heading: 'ACCESS RESTRICTED',
+      message:
+        'This document could not be decrypted.\nScan the QR code below using your phone camera to access the document.',
+      footer: 'This file is encrypted and requires secure device authentication.',
+    },
+    fr: {
+      heading: 'ACCÈS REFUSÉ',
+      message:
+        'Ce document n’a pas pu être déchiffré.\nScannez le code QR ci-dessous avec la caméra de votre téléphone pour accéder au document.',
+      footer: 'Ce fichier est chiffré et nécessite une authentification sécurisée.',
+    },
+    it: {
+      heading: 'ACCESSO NEGATO',
+      message:
+        'Impossibile decifrare il documento.\nScansiona il codice QR qui sotto con la fotocamera del tuo telefono per accedere al documento.',
+      footer: 'Questo file è crittografato e richiede l\'autenticazione sicura.',
+    },
+    es: {
+      heading: 'ACCESO DENEGADO',
+      message:
+        'No se pudo descifrar el documento.\nEscanee el código QR a continuación con la cámara de su teléfono para acceder al documento.',
+      footer: 'Este archivo está cifrado y requiere autenticación segura.',
+    },
+    pt: {
+      heading: 'ACESSO NEGADO',
+      message:
+        'Não foi possível descriptografar o documento.\nEscaneie o QR abaixo com a câmera do seu telefone para acessar ao documento.',
+      footer: 'Este arquivo está criptografado e requer autenticação segura.',
+    },
   };
-  const message = instructions[language] || instructions.en;
 
-  // Draw red header
+  const langData = localizedText[language] || localizedText.en;
+
+  // Red header
   page.drawRectangle({
     x: 0,
     y: height - 120,
@@ -30,30 +56,14 @@ export default async function handler(req, res) {
     color: rgb(0.9, 0.1, 0.1),
   });
 
-  // Draw ACCESS RESTRICTED text
-  page.drawText('ACCESS RESTRICTED', {
+  // Dynamic heading
+  page.drawText(langData.heading, {
     x: 120,
     y: height - 80,
     size: 22,
     font,
     color: rgb(1, 1, 1),
   });
-
-  // Draw scanneri.png to left of header text
-  try {
-    const scannerBytes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/scanneri.png`).then(res =>
-      res.arrayBuffer()
-    );
-    const scannerImage = await pdfDoc.embedPng(scannerBytes);
-    page.drawImage(scannerImage, {
-      x: 50,
-      y: height - 110,
-      width: 50,
-      height: 50,
-    });
-  } catch {
-    console.warn('Failed to load scanneri.png');
-  }
 
   // Optional logo on right
   if (logoUrl) {
@@ -71,10 +81,10 @@ export default async function handler(req, res) {
     }
   }
 
-  // Instruction block
+  // Instructions
   let cursorY = height - 150;
   const lineHeight = 18;
-  const lines = message.split('\n');
+  const lines = langData.message.split('\n');
 
   for (let i = 0; i < lines.length; i++) {
     page.drawText(lines[i], {
@@ -88,7 +98,7 @@ export default async function handler(req, res) {
 
   cursorY -= lines.length * lineHeight + 30;
 
-  // Generate QR Code
+  // Generate QR
   const qrCodeDataUrl = await QRCode.toDataURL(url);
   const qrImageBytes = await fetch(qrCodeDataUrl).then((res) => res.arrayBuffer());
   const qrImage = await pdfDoc.embedPng(qrImageBytes);
@@ -99,7 +109,7 @@ export default async function handler(req, res) {
   const qrBoxX = width / 2 - boxSize / 2;
   const qrBoxY = cursorY - boxSize;
 
-  // Draw black QR box
+  // Black box
   page.drawRectangle({
     x: qrBoxX,
     y: qrBoxY,
@@ -108,13 +118,34 @@ export default async function handler(req, res) {
     color: rgb(0, 0, 0),
   });
 
-  // Draw QR code inside
+  // QR image
   page.drawImage(qrImage, {
     x: width / 2 - qrSize / 2,
     y: qrBoxY + boxPadding,
     width: qrSize,
     height: qrSize,
   });
+
+  // scanneri.png below QR
+  try {
+    const scannerBytes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/scanneri.png`).then((res) =>
+      res.arrayBuffer()
+    );
+    const scannerImage = await pdfDoc.embedPng(scannerBytes);
+
+    const scannerWidth = 75;
+    const scannerHeight = 75;
+    const scannerY = qrBoxY - scannerHeight - 20;
+
+    page.drawImage(scannerImage, {
+      x: width / 2 - scannerWidth / 2,
+      y: scannerY,
+      width: scannerWidth,
+      height: scannerHeight,
+    });
+  } catch {
+    console.warn('Failed to load scanneri.png');
+  }
 
   // Footer
   page.drawLine({
@@ -124,7 +155,7 @@ export default async function handler(req, res) {
     color: rgb(0.8, 0.8, 0.8),
   });
 
-  page.drawText('This file is encrypted and requires secure device authentication.', {
+  page.drawText(langData.footer, {
     x: 50,
     y: 60,
     size: 10,
@@ -134,6 +165,6 @@ export default async function handler(req, res) {
 
   const pdfBytes = await pdfDoc.save();
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', 'inline; filename=\"secure.pdf\"');
+  res.setHeader('Content-Disposition', 'inline; filename="secure.pdf"');
   res.send(Buffer.from(pdfBytes));
 }
