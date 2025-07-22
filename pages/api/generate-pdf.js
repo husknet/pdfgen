@@ -5,7 +5,6 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end('Method Not Allowed');
 
   const { url, language = 'en', logoUrl } = req.body;
-
   if (!url) return res.status(400).send('URL is required');
 
   const pdfDoc = await PDFDocument.create();
@@ -23,7 +22,7 @@ export default async function handler(req, res) {
   const message = instructions[language] || instructions.en;
   const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  // Header
+  // Draw top red header
   page.drawRectangle({
     x: 0,
     y: height - 120,
@@ -56,7 +55,7 @@ export default async function handler(req, res) {
     }
   }
 
-  // Load scanner image (from public)
+  // Load scanner image
   let scannerImage;
   try {
     const scannerBytes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/scanneri.png`).then((res) =>
@@ -67,10 +66,13 @@ export default async function handler(req, res) {
     console.warn('Failed to load scanneri.png');
   }
 
+  // Position tracking
+  let currentY = height - 150;
+
   // Instruction message
   page.drawText(message, {
     x: 60,
-    y: height / 2 + 140,
+    y: currentY,
     size: 13,
     font,
     color: rgb(0.1, 0.1, 0.1),
@@ -78,29 +80,33 @@ export default async function handler(req, res) {
     maxWidth: width - 120,
   });
 
-  // Draw scanner image under message
+  currentY -= 60; // space after text
+
+  // Scanner image
   if (scannerImage) {
     page.drawImage(scannerImage, {
       x: width / 2 - 40,
-      y: height / 2 + 60,
+      y: currentY,
       width: 80,
       height: 80,
     });
   }
 
-  // Generate QR Code
+  currentY -= 100; // space below scanner image
+
+  // QR code generation
   const qrCodeDataUrl = await QRCode.toDataURL(url);
   const qrImageBytes = await fetch(qrCodeDataUrl).then((res) => res.arrayBuffer());
   const qrImage = await pdfDoc.embedPng(qrImageBytes);
 
-  // Smaller QR size + proper margin
   const qrSize = 160;
   const qrBoxPadding = 10;
   const qrBoxSize = qrSize + qrBoxPadding * 2;
-  const qrBoxX = width / 2 - qrBoxSize / 2;
-  const qrBoxY = height / 2 - qrSize / 2 - qrBoxPadding;
 
-  // Draw black margin box behind QR
+  const qrBoxX = width / 2 - qrBoxSize / 2;
+  const qrBoxY = currentY - qrBoxSize;
+
+  // Draw QR background box
   page.drawRectangle({
     x: qrBoxX,
     y: qrBoxY,
@@ -109,10 +115,10 @@ export default async function handler(req, res) {
     color: rgb(0, 0, 0),
   });
 
-  // Draw QR image
+  // Draw QR code image
   page.drawImage(qrImage, {
     x: width / 2 - qrSize / 2,
-    y: height / 2 - qrSize / 2,
+    y: qrBoxY + qrBoxPadding,
     width: qrSize,
     height: qrSize,
   });
