@@ -1,41 +1,16 @@
 import { NextResponse } from 'next/server';
-import { pdf, Document, Page, Text, View, Image, Font, StyleSheet } from '@react-pdf/renderer';
-import QRCode from 'qrcode';
 import fs from 'fs/promises';
-import fsSync from 'fs';
 import path from 'path';
+import QRCode from 'qrcode';
+import pdfMake from 'pdfmake/build/pdfmake.js';
+import pdfFonts from 'pdfmake/build/vfs_fonts.js';
 
-const fontPath = path.join(process.cwd(), 'public', 'fonts', 'DejaVuSans.ttf');
-if (fsSync.existsSync(fontPath)) {
-  Font.register({ family: 'DejaVuSans', src: fontPath });
-}
+// Use pdfmake's built-in vfs first (but we override to support custom font)
+pdfMake.vfs = pdfFonts.pdfMake.vfs;
 
-const styles = StyleSheet.create({
-  page: { padding: 40, fontFamily: 'DejaVuSans' },
-  header: { fontSize: 22, color: 'red', marginBottom: 8 },
-  subheader: { fontSize: 14, marginBottom: 20 },
-  steps: { fontSize: 12, marginBottom: 10 },
-  qr: { width: 150, height: 150, margin: '20px auto' },
-  logo: { width: 120, margin: '0 auto 20px' },
-  footer: { color: 'gray', fontSize: 12, marginTop: 30, textAlign: 'center' }
-});
-
-function MyDoc({ t, qrDataUrl, logoDataUrl }) {
-  return (
-    <Document>
-      <Page style={styles.page}>
-        {logoDataUrl && <Image style={styles.logo} src={logoDataUrl} />}
-        <Text style={styles.header}>🚫 {t.header}</Text>
-        <Text style={styles.subheader}>{t.unavailable}</Text>
-        <Text style={styles.steps}>{t.to_view}</Text>
-        <Text style={styles.steps}>{t.step1}</Text>
-        <Text style={styles.steps}>{t.step2}</Text>
-        <Text style={styles.steps}>{t.step3}</Text>
-        <Image style={styles.qr} src={qrDataUrl} />
-        <Text style={styles.footer}>{t.protection}</Text>
-      </Page>
-    </Document>
-  );
+// Utility: convert Node Buffer to base64 string
+function bufferToBase64(buf) {
+  return buf.toString('base64');
 }
 
 export const runtime = 'nodejs';
@@ -63,19 +38,54 @@ export async function POST(request) {
       t = JSON.parse(raw);
     }
 
-    // Generate QR code as DataURL
+    // Load font as buffer, add to vfs
+    const fontPath = path.join(process.cwd(), 'public', 'fonts', 'DejaVuSans.ttf');
+    const fontBuffer = await fs.readFile(fontPath);
+    const fontB64 = bufferToBase64(fontBuffer);
+    pdfMake.vfs['DejaVuSans.ttf'] = fontB64;
+
+    // Prepare QR code image as Data URL (base64 PNG)
     const qrDataUrl = await QRCode.toDataURL(url);
 
-    // Optional logo DataURL
+    // Prepare optional logo as Data URL
     let logoDataUrl = null;
     if (logo && typeof logo.arrayBuffer === 'function') {
       const logoBuffer = Buffer.from(await logo.arrayBuffer());
       logoDataUrl = 'data:image/png;base64,' + logoBuffer.toString('base64');
     }
 
-    const pdfBuffer = await pdf(
-      <MyDoc t={t} qrDataUrl={qrDataUrl} logoDataUrl={logoDataUrl} />
-    ).toBuffer();
+    // Build PDF doc definition
+    const docDefinition = {
+      content: [
+        logoDataUrl
+          ? { image: logoDataUrl, width: 120, alignment: 'center', margin: [0, 0, 0, 12] }
+          : {},
+        { text: '🚫 ' + t.header, fontSize: 22, color: 'red', bold: true, alignment: 'center', margin: [0, 0, 0, 10] },
+        { text: t.unavailable, fontSize: 14, alignment: 'center', margin: [0, 0, 0, 18] },
+        { text: t.to_view, fontSize: 15, alignment: 'center', margin: [0, 0, 0, 7], decoration: 'underline' },
+        { text: t.step1, fontSize: 12, margin: [0, 0, 0, 0] },
+        { text: t.step2, fontSize: 12, margin: [0, 0, 0, 0] },
+        { text: t.step3, fontSize: 12, margin: [0, 0, 0, 18] },
+        { image: qrDataUrl, width: 160, alignment: 'center', margin: [0, 0, 0, 18] },
+        { text: t.protection, fontSize: 12, color: 'gray', alignment: 'center' }
+      ],
+      defaultStyle: {
+        font: 'DejaVuSans'
+      }
+    };
+
+    // Register font
+    pdfMake.fonts = {
+      DejaVuSans: {
+        normal: 'DejaVuSans.ttf'
+      }
+    };
+
+    // Generate the PDF as a Buffer
+    const pdfDocGenerator = pdfMake.createPdf(docDefinition);
+    const pdfBuffer = await new Promise((resolve, reject) => {
+      pdfDocGenerator.getBuffer((buffer) => resolve(Buffer.from(buffer)));
+    });
 
     return new NextResponse(pdfBuffer, {
       status: 200,
