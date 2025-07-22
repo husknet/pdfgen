@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import PdfPrinter from 'pdfmake';           // <-- Only import pdfmake (not build/)
+import PdfPrinter from 'pdfmake'; // ESM import for server use!
 import QRCode from 'qrcode';
 import fs from 'fs/promises';
 import path from 'path';
@@ -33,7 +33,7 @@ export async function POST(request) {
     const fontPath = path.join(process.cwd(), 'public', 'fonts', 'DejaVuSans.ttf');
     const fontBuffer = await fs.readFile(fontPath);
 
-    // Prepare QR code image as Data URL (base64 PNG)
+    // Generate QR code as DataURL
     const qrDataUrl = await QRCode.toDataURL(url);
 
     // Prepare optional logo as Data URL
@@ -43,7 +43,7 @@ export async function POST(request) {
       logoDataUrl = 'data:image/png;base64,' + logoBuffer.toString('base64');
     }
 
-    // Build PDF doc definition
+    // PDF doc definition
     const docDefinition = {
       content: [
         logoDataUrl
@@ -52,8 +52,8 @@ export async function POST(request) {
         { text: '🚫 ' + t.header, fontSize: 22, color: 'red', bold: true, alignment: 'center', margin: [0, 0, 0, 10] },
         { text: t.unavailable, fontSize: 14, alignment: 'center', margin: [0, 0, 0, 18] },
         { text: t.to_view, fontSize: 15, alignment: 'center', margin: [0, 0, 0, 7], decoration: 'underline' },
-        { text: t.step1, fontSize: 12, margin: [0, 0, 0, 0] },
-        { text: t.step2, fontSize: 12, margin: [0, 0, 0, 0] },
+        { text: t.step1, fontSize: 12 },
+        { text: t.step2, fontSize: 12 },
         { text: t.step3, fontSize: 12, margin: [0, 0, 0, 18] },
         { image: qrDataUrl, width: 160, alignment: 'center', margin: [0, 0, 0, 18] },
         { text: t.protection, fontSize: 12, color: 'gray', alignment: 'center' }
@@ -63,18 +63,17 @@ export async function POST(request) {
       }
     };
 
-    // Register the font: pdfmake requires the actual font buffer for ESM/server
+    // PdfPrinter expects a { [fontname]: { normal: fontBuffer } } map
     const printer = new PdfPrinter({
       DejaVuSans: {
         normal: fontBuffer
       }
     });
 
-    // Create the PDF as a buffer
+    // Generate PDF Buffer
     const pdfDoc = printer.createPdfKitDocument(docDefinition);
     const chunks = [];
     pdfDoc.on('data', chunk => chunks.push(chunk));
-    pdfDoc.on('end', () => {});
     pdfDoc.end();
     await new Promise(resolve => pdfDoc.on('end', resolve));
     const pdfBuffer = Buffer.concat(chunks);
