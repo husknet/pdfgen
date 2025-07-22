@@ -40,6 +40,8 @@ export default function Home() {
       link.href = window.URL.createObjectURL(blob);
       link.download = `SecureFileAccess_${lang}.pdf`;
       link.click();
+    } else {
+      alert('Failed to generate PDF. Please try again.');
     }
     setLoading(false);
   };
