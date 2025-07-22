@@ -4,12 +4,12 @@ import { useState, useRef } from 'react';
 const languages = [
   { code: 'en', label: 'English' },
   { code: 'fr', label: 'Français' },
-  { code: 'zh', label: '中文' },
-  { code: 'ja', label: '日本語' },
-  { code: 'it', label: 'Italiano' },
   { code: 'es', label: 'Español' },
+  { code: 'it', label: 'Italiano' },
+  { code: 'ja', label: '日本語' },
+  { code: 'ko', label: '한국어' },
   { code: 'pt', label: 'Português' },
-  { code: 'ko', label: '한국어' }
+  { code: 'zh', label: '中文' }
 ];
 
 export default function Home() {
@@ -45,7 +45,7 @@ export default function Home() {
   };
 
   return (
-    <main style={{ maxWidth: 400, margin: '50px auto', fontFamily: 'sans-serif' }}>
+    <main style={{ maxWidth: 440, margin: '50px auto', fontFamily: 'sans-serif' }}>
       <h2>PDF QR Generator</h2>
       <form onSubmit={handleSubmit}>
         <label>
@@ -75,6 +75,9 @@ export default function Home() {
         </button>
       </form>
       <p style={{marginTop:24, color:'#888', fontSize:12}}>No files are stored. All processing is done in-memory.</p>
+      <div style={{marginTop:24}}>
+        <img src="/images/logo.png" alt="Sample logo" width={120} />
+      </div>
     </main>
   );
 }
