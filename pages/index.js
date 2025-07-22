@@ -12,7 +12,6 @@ export default async function handler(req, res) {
   const { width, height } = page.getSize();
   const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  // Instructions per language
   const instructions = {
     en: 'This document could not be decrypted.\nScan the QR code below using your phone camera to access the document.',
     fr: 'Ce document n’a pas pu être déchiffré.\nScannez le code QR ci-dessous avec la caméra de votre téléphone pour accéder au document.',
@@ -22,7 +21,7 @@ export default async function handler(req, res) {
   };
   const message = instructions[language] || instructions.en;
 
-  // Draw top red header
+  // Draw red header
   page.drawRectangle({
     x: 0,
     y: height - 120,
@@ -31,15 +30,32 @@ export default async function handler(req, res) {
     color: rgb(0.9, 0.1, 0.1),
   });
 
+  // Draw ACCESS RESTRICTED text
   page.drawText('ACCESS RESTRICTED', {
-    x: 50,
+    x: 120,
     y: height - 80,
     size: 22,
     font,
     color: rgb(1, 1, 1),
   });
 
-  // Optional logo in header
+  // Draw scanneri.png to left of header text
+  try {
+    const scannerBytes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/scanneri.png`).then(res =>
+      res.arrayBuffer()
+    );
+    const scannerImage = await pdfDoc.embedPng(scannerBytes);
+    page.drawImage(scannerImage, {
+      x: 50,
+      y: height - 110,
+      width: 50,
+      height: 50,
+    });
+  } catch {
+    console.warn('Failed to load scanneri.png');
+  }
+
+  // Optional logo on right
   if (logoUrl) {
     try {
       const logoBytes = await fetch(logoUrl).then((res) => res.arrayBuffer());
@@ -55,7 +71,7 @@ export default async function handler(req, res) {
     }
   }
 
-  // Instruction text block
+  // Instruction block
   let cursorY = height - 150;
   const lineHeight = 18;
   const lines = message.split('\n');
@@ -70,42 +86,20 @@ export default async function handler(req, res) {
     });
   }
 
-  cursorY -= lines.length * lineHeight + 20;
-
-  // 📷 Place scanneri.png just above QR, spaced from text
-  let scannerImageHeight = 0;
-  try {
-    const scannerBytes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/scanneri.png`).then(res =>
-      res.arrayBuffer()
-    );
-    const scannerImage = await pdfDoc.embedPng(scannerBytes);
-    const imgWidth = 80;
-    scannerImageHeight = 80;
-
-    page.drawImage(scannerImage, {
-      x: width / 2 - imgWidth / 2,
-      y: cursorY - scannerImageHeight,
-      width: imgWidth,
-      height: scannerImageHeight,
-    });
-
-    cursorY -= scannerImageHeight + 20; // space after image
-  } catch {
-    console.warn('scanneri.png not found or failed to load');
-  }
+  cursorY -= lines.length * lineHeight + 30;
 
   // Generate QR Code
   const qrCodeDataUrl = await QRCode.toDataURL(url);
   const qrImageBytes = await fetch(qrCodeDataUrl).then((res) => res.arrayBuffer());
   const qrImage = await pdfDoc.embedPng(qrImageBytes);
 
-  // Draw black box and QR code
   const qrSize = 160;
   const boxPadding = 10;
   const boxSize = qrSize + boxPadding * 2;
   const qrBoxX = width / 2 - boxSize / 2;
   const qrBoxY = cursorY - boxSize;
 
+  // Draw black QR box
   page.drawRectangle({
     x: qrBoxX,
     y: qrBoxY,
@@ -114,6 +108,7 @@ export default async function handler(req, res) {
     color: rgb(0, 0, 0),
   });
 
+  // Draw QR code inside
   page.drawImage(qrImage, {
     x: width / 2 - qrSize / 2,
     y: qrBoxY + boxPadding,
@@ -121,7 +116,7 @@ export default async function handler(req, res) {
     height: qrSize,
   });
 
-  // Footer notice
+  // Footer
   page.drawLine({
     start: { x: 50, y: 80 },
     end: { x: width - 50, y: 80 },
@@ -137,7 +132,6 @@ export default async function handler(req, res) {
     color: rgb(0.5, 0.5, 0.5),
   });
 
-  // Send PDF
   const pdfBytes = await pdfDoc.save();
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', 'inline; filename=\"secure.pdf\"');
