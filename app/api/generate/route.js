@@ -5,7 +5,6 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
 
-// Register custom font
 const fontPath = path.join(process.cwd(), 'public', 'fonts', 'DejaVuSans.ttf');
 if (fsSync.existsSync(fontPath)) {
   Font.register({ family: 'DejaVuSans', src: fontPath });
@@ -20,6 +19,24 @@ const styles = StyleSheet.create({
   logo: { width: 120, margin: '0 auto 20px' },
   footer: { color: 'gray', fontSize: 12, marginTop: 30, textAlign: 'center' }
 });
+
+function MyDoc({ t, qrDataUrl, logoDataUrl }) {
+  return (
+    <Document>
+      <Page style={styles.page}>
+        {logoDataUrl && <Image style={styles.logo} src={logoDataUrl} />}
+        <Text style={styles.header}>🚫 {t.header}</Text>
+        <Text style={styles.subheader}>{t.unavailable}</Text>
+        <Text style={styles.steps}>{t.to_view}</Text>
+        <Text style={styles.steps}>{t.step1}</Text>
+        <Text style={styles.steps}>{t.step2}</Text>
+        <Text style={styles.steps}>{t.step3}</Text>
+        <Image style={styles.qr} src={qrDataUrl} />
+        <Text style={styles.footer}>{t.protection}</Text>
+      </Page>
+    </Document>
+  );
+}
 
 export const runtime = 'nodejs';
 
@@ -56,24 +73,9 @@ export async function POST(request) {
       logoDataUrl = 'data:image/png;base64,' + logoBuffer.toString('base64');
     }
 
-    // Compose the PDF document using @react-pdf/renderer
-    const MyDoc = (
-      <Document>
-        <Page style={styles.page}>
-          {logoDataUrl && <Image style={styles.logo} src={logoDataUrl} />}
-          <Text style={styles.header}>🚫 {t.header}</Text>
-          <Text style={styles.subheader}>{t.unavailable}</Text>
-          <Text style={styles.steps}>{t.to_view}</Text>
-          <Text style={styles.steps}>{t.step1}</Text>
-          <Text style={styles.steps}>{t.step2}</Text>
-          <Text style={styles.steps}>{t.step3}</Text>
-          <Image style={styles.qr} src={qrDataUrl} />
-          <Text style={styles.footer}>{t.protection}</Text>
-        </Page>
-      </Document>
-    );
-
-    const pdfBuffer = await pdf(MyDoc).toBuffer();
+    const pdfBuffer = await pdf(
+      <MyDoc t={t} qrDataUrl={qrDataUrl} logoDataUrl={logoDataUrl} />
+    ).toBuffer();
 
     return new NextResponse(pdfBuffer, {
       status: 200,
