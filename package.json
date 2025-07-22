@@ -1,13 +1,12 @@
 {
-  "name": "qr-pdf-generator",
+  "name": "pdfgen-app",
   "type": "module",
   "dependencies": {
     "next": "latest",
     "react": "latest",
     "react-dom": "latest",
     "pdfkit": "^0.13.0",
-    "qrcode": "^1.5.3",
-    "busboy": "^1.6.0"
+    "qrcode": "^1.5.3"
   },
   "scripts": {
     "dev": "next dev",
